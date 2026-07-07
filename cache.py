@@ -1,11 +1,10 @@
 
-
 from collections import OrderedDict
 from datetime import datetime, timedelta
 
 
 class CacheItem:
-   
+    """Wraps a value along with its expiry time (3 seconds fixed)."""
 
     def __init__(self, value):
         self.value = value
@@ -16,14 +15,31 @@ class CacheItem:
 
 
 class InMemoryCache:
-    
+    """A simple in-memory cache with TTL expiry, capacity limit, and LRU eviction."""
+
+    MAX_CAPACITY = 5
 
     def __init__(self):
         self._store = OrderedDict()  # internal storage
 
     def add(self, key: str, value: str) -> None:
+        """Add or update a key-value pair. Value must be a string."""
         if not isinstance(value, str):
             raise TypeError("Only string values are supported.")
+
+        if key in self._store:
+            # Updating existing key, just refresh it and move to most-recently-used
+            self._store[key] = CacheItem(value)
+            self._store.move_to_end(key)
+            return
+
+        # New key -> make sure there's space
+        if len(self._store) >= self.MAX_CAPACITY:
+            self.cleanup_expired()
+
+        if len(self._store) >= self.MAX_CAPACITY:
+            self._evict_lru()
+
         self._store[key] = CacheItem(value)
 
     def get(self, key: str):
@@ -38,6 +54,7 @@ class InMemoryCache:
             del self._store[key]
             return "does not exist"
 
+        self._store.move_to_end(key)  # mark as recently used
         return item.value
 
     def remove(self, key: str) -> bool:
@@ -54,6 +71,18 @@ class InMemoryCache:
             return None
         key, item = self._store.popitem(last=False)
         return key, item.value
+
+    def cleanup_expired(self) -> int:
+        """Remove all expired entries from the cache. Returns count removed."""
+        expired_keys = [k for k, v in self._store.items() if v.is_expired()]
+        for k in expired_keys:
+            del self._store[k]
+        return len(expired_keys)
+
+    def _evict_lru(self) -> None:
+        """Remove the least recently used item (front of the OrderedDict)."""
+        key, _ = self._store.popitem(last=False)
+        print(f"[Cache] Evicted '{key}' (LRU, capacity full)")
 
     def clear(self) -> None:
         """Remove all items from the cache."""
@@ -80,18 +109,21 @@ if __name__ == "__main__":
 
     cache = InMemoryCache()
 
-    cache.add("name", "Alice")
-    cache.add("city", "Paris")
-    cache.add("lang", "Python")
+    cache.add("a", "1")
+    cache.add("b", "2")
+    cache.add("c", "3")
+    cache.add("d", "4")
+    cache.add("e", "5")
+    print("After filling to capacity:", cache)
 
+    cache.get("a")  # access 'a' so it's not the least recently used
+    print("\nAccessed 'a', now adding 'f' (cache full, should evict LRU)...")
+    cache.add("f", "6")
     print(cache)
-    print("Get 'name':", cache.get("name"))
 
-    print("\nWaiting 4 seconds for items to expire...\n")
+    print("\nWaiting 4 seconds for all current items to expire...\n")
     time.sleep(4)
 
-    print("Get 'name' (should be expired):", cache.get("name"))
-    print("Get 'unknown':", cache.get("unknown"))
-
-    print("\nPop first item:", cache.pop_first())
+    print("Adding 'g' -> should trigger cleanup_expired() instead of LRU eviction")
+    cache.add("g", "7")
     print(cache)
