@@ -57,6 +57,23 @@ class LRUEviction(EvictionStrategy):
         print(f"[Cache] Evicted '{key}' (LRU, capacity full)")
 
 
+class FIFOEviction(EvictionStrategy):
+    """Evicts in strict First-In-First-Out order. Access never changes eviction order."""
+
+    def on_add(self, store, key):
+        pass  # OrderedDict already places new keys at the end automatically
+
+    def on_access(self, store, key):
+        pass  # FIFO ignores access entirely -- order is insertion order, period
+
+    def on_remove(self, store, key):
+        pass  # nothing extra to clean up for FIFO
+
+    def evict(self, store):
+        key, _ = store.popitem(last=False)  # remove the oldest-inserted item
+        print(f"[Cache] Evicted '{key}' (FIFO, capacity full)")
+
+
 class InMemoryCache:
     """A simple in-memory cache with TTL expiry, capacity limit, and pluggable eviction.
     This class has NO idea what eviction policy is active -- it only calls the 4 hooks."""
@@ -146,12 +163,10 @@ class InMemoryCache:
         return f"InMemoryCache({items})"
 
 
-# ---------- Demo ----------
-if __name__ == "__main__":
-    import time
-
-    # Plug-and-play: pass in whichever eviction strategy you want
-    cache = InMemoryCache(LRUEviction())
+# ---------- Demo: same scenario, two different policies ----------
+def run_scenario(strategy, label):
+    print(f"\n===== Using {label} =====")
+    cache = InMemoryCache(strategy)
 
     cache.add("a", "1")
     cache.add("b", "2")
@@ -160,16 +175,13 @@ if __name__ == "__main__":
     cache.add("e", "5")
     print("After filling to capacity:", cache)
 
-    cache.get("a")  # access 'a' so it's not the least recently used
-    print("\nAccessed 'a', now adding 'f' (cache full, should evict LRU)...")
+    cache.get("a")  # access 'a' -- matters for LRU, ignored by FIFO
+    print("Accessed 'a', now adding 'f' (cache full)...")
     cache.add("f", "6")
     print(cache)
 
-    print("\nWaiting 4 seconds for all current items to expire...\n")
-    time.sleep(4)
 
-    print("Adding 'g' -> should trigger cleanup_expired() instead of LRU eviction")
-    cache.add("g", "7")
-    print(cache)
-
-# thankyou
+if __name__ == "__main__":
+    run_scenario(LRUEviction(), "LRU")    # 'a' was accessed -> survives -> 'b' evicted
+    run_scenario(FIFOEviction(), "FIFO")  # access ignored -> 'a' still evicted (it's oldest)
+# tan1
