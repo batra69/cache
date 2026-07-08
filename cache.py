@@ -171,3 +171,5 @@ if __name__ == "__main__":
     print("Adding 'g' -> should trigger cleanup_expired() instead of LRU eviction")
     cache.add("g", "7")
     print(cache)
+
+# thankyou
